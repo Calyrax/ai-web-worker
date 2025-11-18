@@ -23,6 +23,7 @@ export default function Home() {
     });
 
     const planData = await planRes.json();
+    console.log("RAW PLAN FROM /api/plan:", planData);
 
     if (!planData.plan) {
       setLogs((prev) => [...prev, "Error: Plan generation failed."]);
@@ -30,31 +31,43 @@ export default function Home() {
       return;
     }
 
-    // Ensure plan is an array
-    const flatPlan =
-      Array.isArray(planData.plan)
-        ? planData.plan
-        : planData.plan.plan || [];
+    //
+    // Flatten possible formats returned by the model
+    //
+    let flatPlan = planData.plan;
+
+    // Case 1: { plan: { plan: [...] } }
+    if (!Array.isArray(flatPlan) && Array.isArray(flatPlan.plan)) {
+      flatPlan = flatPlan.plan;
+    }
+
+    // Case 2: Sometimes GPT returns { plan: { steps: [...] } }
+    if (!Array.isArray(flatPlan) && Array.isArray(flatPlan.steps)) {
+      flatPlan = flatPlan.steps;
+    }
 
     if (!Array.isArray(flatPlan)) {
+      console.error("Plan is not array:", flatPlan);
       setLogs((prev) => [...prev, "Error: Plan is not an array of steps."]);
       setLoading(false);
       return;
     }
 
     setLogs((prev) => [...prev, "Plan created. Running task..."]);
+    console.log("FLATTENED PLAN:", flatPlan);
 
     //
-    // 2. EXECUTE ON RAILWAY BACKEND
-    //    UI MUST SEND "plan"
+    // 2. EXECUTE VIA BACKEND
+    // Frontend must send { plan: [...] }
     //
     const execRes = await fetch("/api/execute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan: flatPlan }),  // 👈 FIXED HERE
+      body: JSON.stringify({ plan: flatPlan }),
     });
 
     const execData = await execRes.json();
+    console.log("EXEC RESPONSE:", execData);
 
     if (execData.error) {
       setLogs((prev) => [...prev, "Error: " + execData.error]);
@@ -171,6 +184,4 @@ export default function Home() {
     </main>
   );
 }
-
-
 
