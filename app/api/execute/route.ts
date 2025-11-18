@@ -1,36 +1,27 @@
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
+  const { plan } = await req.json();
+
+  if (!plan || !Array.isArray(plan)) {
+    return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
+  }
+
   try {
-    const { plan } = await req.json();
-
-    console.log("EXECUTE RECEIVED PLAN:", plan);
-
-    if (!Array.isArray(plan)) {
-      return NextResponse.json(
-        { error: "Plan must be an array before sending to runner." },
-        { status: 400 }
-      );
+    const runnerUrl = process.env.RUNNER_URL;
+    if (!runnerUrl) {
+      throw new Error("Missing RUNNER_URL environment variable");
     }
 
-    // Send the plan to the backend runner as "commands"
-    const response = await fetch(
-      "https://ai-web-worker-runner-production.up.railway.app/run",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ commands: plan }), // 👈 FINAL SHAPE
-      }
-    );
+    const res = await fetch(runnerUrl + "/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan }),
+    });
 
-    const data = await response.json();
+    const data = await res.json();
     return NextResponse.json(data);
-
-  } catch (err) {
-    console.error("EXECUTE API ERROR:", err);
-    return NextResponse.json(
-      { error: "Runner server unreachable", details: String(err) },
-      { status: 500 }
-    );
+  } catch (err: any) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
