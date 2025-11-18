@@ -13,7 +13,9 @@ export default function Home() {
     setLogs([]);
     setResults([]);
 
-    // 1. PLAN
+    //
+    // 1. Generate PLAN from OpenAI
+    //
     const planRes = await fetch("/api/plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -21,18 +23,34 @@ export default function Home() {
     });
 
     const planData = await planRes.json();
+
+    if (!planData.plan) {
+      setLogs((prev) => [...prev, "Error: Plan generation failed."]);
+      setLoading(false);
+      return;
+    }
+
     setLogs((prev) => [...prev, "Plan created. Running task..."]);
 
-    // 2. EXECUTE
+    //
+    // 2. EXECUTE ON RAILWAY BACKEND
+    //    FIX: send "commands" not "plan"
+    //
     const execRes = await fetch("/api/execute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan: planData.plan }),
+      body: JSON.stringify({ commands: planData.plan }),
     });
 
     const execData = await execRes.json();
 
-    setLogs((prev) => [...prev, ...execData.log]);
+    if (execData.error) {
+      setLogs((prev) => [...prev, "Error: " + execData.error]);
+      setLoading(false);
+      return;
+    }
+
+    setLogs((prev) => [...prev, ...(execData.logs || [])]);
     setResults(execData.result || []);
     setLoading(false);
   };
@@ -41,10 +59,7 @@ export default function Home() {
     <main className="min-h-screen bg-gray-100 p-10">
       <div className="max-w-3xl mx-auto space-y-6">
 
-        {/* Title */}
-        <h1 className="text-4xl font-bold text-gray-900">
-          AI Web Worker
-        </h1>
+        <h1 className="text-4xl font-bold text-gray-900">AI Web Worker</h1>
         <p className="text-gray-600">
           Tell the AI what you want done on the internet — it will browse, click, search, extract, and return results.
         </p>
@@ -107,7 +122,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Results Table */}
+        {/* Results */}
         {results.length > 0 && (
           <div className="bg-white p-4 rounded-lg border">
             <h2 className="text-xl font-semibold mb-4">Results</h2>
@@ -117,10 +132,7 @@ export default function Home() {
                 <thead className="bg-gray-200">
                   <tr>
                     {Object.keys(results[0]).map((col) => (
-                      <th
-                        key={col}
-                        className="px-4 py-2 border-b border-gray-300 text-gray-700 font-semibold"
-                      >
+                      <th key={col} className="px-4 py-2 border-b border-gray-300">
                         {col.toUpperCase()}
                       </th>
                     ))}
@@ -131,13 +143,8 @@ export default function Home() {
                   {results.map((item, i) => (
                     <tr key={i} className="hover:bg-gray-50">
                       {Object.values(item).map((val: any, j) => (
-                        <td
-                          key={j}
-                          className="px-4 py-2 border-b border-gray-300"
-                        >
-                          {typeof val === "string"
-                            ? val
-                            : JSON.stringify(val)}
+                        <td key={j} className="px-4 py-2 border-b border-gray-300">
+                          {typeof val === "string" ? val : JSON.stringify(val)}
                         </td>
                       ))}
                     </tr>
@@ -147,8 +154,10 @@ export default function Home() {
             </div>
           </div>
         )}
+
       </div>
     </main>
   );
 }
+
 
