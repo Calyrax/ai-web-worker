@@ -10,7 +10,7 @@ export async function POST(req: Request) {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ commands: plan }),  // 👈 FIXED HERE
       }
     );
 
@@ -25,4 +25,3 @@ export async function POST(req: Request) {
     );
   }
 }
-
