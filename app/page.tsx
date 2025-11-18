@@ -30,16 +30,28 @@ export default function Home() {
       return;
     }
 
+    // Ensure plan is an array
+    const flatPlan =
+      Array.isArray(planData.plan)
+        ? planData.plan
+        : planData.plan.plan || [];
+
+    if (!Array.isArray(flatPlan)) {
+      setLogs((prev) => [...prev, "Error: Plan is not an array of steps."]);
+      setLoading(false);
+      return;
+    }
+
     setLogs((prev) => [...prev, "Plan created. Running task..."]);
 
     //
     // 2. EXECUTE ON RAILWAY BACKEND
-    //    FIX: send "commands" not "plan"
+    //    UI MUST SEND "plan"
     //
     const execRes = await fetch("/api/execute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commands: planData.plan }),
+      body: JSON.stringify({ plan: flatPlan }),  // 👈 FIXED HERE
     });
 
     const execData = await execRes.json();
@@ -159,5 +171,6 @@ export default function Home() {
     </main>
   );
 }
+
 
 
