@@ -13,10 +13,10 @@ export default function Home() {
     setLogs([]);
     setResults([]);
 
-    //
-    // 1. Ask /api/plan to create a plan from the prompt
-    //
     try {
+      //
+      // 1. Generate a plan from the user's prompt
+      //
       const planRes = await fetch("/api/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -31,7 +31,6 @@ export default function Home() {
         return;
       }
 
-      // Plan can be { plan: [...] } or just [...]
       const rawPlan = planData.plan;
       const flatPlan = Array.isArray(rawPlan)
         ? rawPlan
@@ -40,10 +39,7 @@ export default function Home() {
         : [];
 
       if (!Array.isArray(flatPlan) || flatPlan.length === 0) {
-        setLogs((prev) => [
-          ...prev,
-          "Error: Plan is not an array of steps.",
-        ]);
+        setLogs((prev) => [...prev, "Error: Plan is not an array of steps."]);
         setLoading(false);
         return;
       }
@@ -51,7 +47,7 @@ export default function Home() {
       setLogs((prev) => [...prev, "Plan created. Running task..."]);
 
       //
-      // 2. Send the plan to /api/execute, which talks to the Railway runner
+      // 2. Execute plan using the backend runner
       //
       const execRes = await fetch("/api/execute", {
         method: "POST",
@@ -158,39 +154,66 @@ export default function Home() {
 
         {/* Pretty Results */}
         {results.length > 0 && (
-          <div className="bg-white p-4 rounded-lg border">
-            <h2 className="text-xl font-semibold mb-4">Results</h2>
+          <div className="bg-white p-5 rounded-lg border shadow-sm">
+            <h2 className="text-2xl font-semibold mb-4 text-gray-900">
+              Results
+            </h2>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {results.map((item, i) => (
-                <div
-                  key={i}
-                  className="border rounded-xl p-3 shadow-sm hover:shadow-md transition bg-white flex flex-col justify-between"
-                >
-                  {/* Main text */}
-                  <div className="mb-2 text-gray-900 font-medium">
-                    {item.text || "No text found"}
-                  </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {results.map((item, i) => {
+                // Try to guess price inside text
+                const hasPrice = item.text?.match(/\$\d+[,\d]*/);
 
-                  {/* Link (if present) */}
-                  {item.href && (
-                    <a
-                      href={item.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline text-sm break-all mt-1"
-                    >
-                      {item.href}
-                    </a>
-                  )}
+                // Try to guess image URL inside text (rare but works sometimes)
+                const imgUrl =
+                  item.text?.match(
+                    /(https?:\/\/.*\.(?:png|jpg|jpeg|gif))/i
+                  )?.[0] || null;
 
-                  {!item.href && (
-                    <div className="text-xs text-gray-400 mt-1">
-                      No link available
+                return (
+                  <div
+                    key={i}
+                    className="border rounded-xl p-4 shadow-sm hover:shadow-md transition bg-white flex flex-col"
+                  >
+                    {/* Thumbnail */}
+                    {imgUrl && (
+                      <img
+                        src={imgUrl}
+                        alt="thumbnail"
+                        className="w-full h-32 object-cover rounded-md mb-3"
+                      />
+                    )}
+
+                    {/* Main Text */}
+                    <div className="font-medium text-gray-900 line-clamp-4 mb-2">
+                      {item.text || "No text found"}
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    {/* Price Badge */}
+                    {hasPrice && (
+                      <span className="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded mb-2 w-fit">
+                        {hasPrice[0]}
+                      </span>
+                    )}
+
+                    {/* Link */}
+                    {item.href ? (
+                      <a
+                        href={item.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline text-sm break-all mt-auto"
+                      >
+                        Open Link →
+                      </a>
+                    ) : (
+                      <div className="text-xs text-gray-400 mt-auto">
+                        No link available
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
