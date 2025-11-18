@@ -13,6 +13,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing prompt." }, { status: 400 });
     }
 
+    // Request a plan from OpenAI Responses API
     const completion = await client.responses.create({
       model: "gpt-4.1",
       input: `
@@ -23,11 +24,9 @@ User request: "${prompt}"
 `
     });
 
-    // Extract text output safely
+    // ←← USE ONLY VALID PROPERTIES
     const textOutput =
-      completion.output_text ??
-      completion.output?.[0]?.content?.[0]?.text ??
-      "";
+      completion.output_text ?? "";
 
     if (!textOutput) {
       return NextResponse.json(
@@ -56,5 +55,3 @@ User request: "${prompt}"
     );
   }
 }
-
-
