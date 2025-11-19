@@ -5,37 +5,6 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-/**
- * Safely extracts text output from the OpenAI Responses API.
- * Works for ALL models: o3-mini, gpt-4.1, gpt-4.1-mini, etc.
- */
-function extractText(response: any): string {
-  try {
-    const item = response?.output?.[0];
-    if (!item) return "";
-
-    // New message-type output
-    if (item.type === "message" && Array.isArray(item.content)) {
-      return item.content
-        .map((c: any) => c?.text?.value ?? "")
-        .join("")
-        .trim();
-    }
-
-    // Text output
-    if (item.type === "output_text") {
-      return item.text?.value ?? item.text ?? "";
-    }
-
-    // Fallback for raw strings
-    if (typeof item === "string") return item;
-
-    return "";
-  } catch {
-    return "";
-  }
-}
-
 export async function POST(req: NextRequest) {
   try {
     const { prompt } = await req.json();
@@ -44,45 +13,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
-    // Ask OpenAI to create a plan in pure JSON
     const completion = await client.responses.create({
       model: "o3-mini",
       input: `
-You are a planning assistant.
-Return ONLY a JSON array of steps. No explanation.
+Return ONLY a JSON array. No text, no explanation.
 
-Each step must be in this format:
-- { "action": "open_page", "url": "https://..." }
-- { "action": "wait", "milliseconds": 1500 }
-- { "action": "extract_list", "selector": "CSS_SELECTOR", "limit": N }
+Allowed actions:
+- open_page
+- wait
+- extract_list
 
 User request:
 ${prompt}
 `
     });
 
-    // Extract raw text output
-    const textOutput = extractText(completion);
+    // Extract output text (o3-mini returns type: "output_text")
+    const first: any = completion.output?.[0];
 
-    let plan: any[] = [];
-    try {
-      plan = JSON.parse(textOutput);
-    } catch (err) {
+    let raw = "";
+
+    if (first && first.type === "output_text") {
+      raw = first.text; // <-- TS-safe (first is "any")
+    } else {
       return NextResponse.json(
         {
-          error: "Could not parse JSON plan.",
-          raw: textOutput
+          error: "Unexpected model output format",
+          raw: completion.output
         },
         { status: 500 }
       );
     }
+
+    const plan = JSON.parse(raw);
 
     return NextResponse.json({ plan });
 
   } catch (error: any) {
     console.error("PLAN ERROR:", error);
     return NextResponse.json(
-      { error: "Plan generation failed" },
+      { error: "Plan generation failed", details: error.message },
       { status: 500 }
     );
   }
