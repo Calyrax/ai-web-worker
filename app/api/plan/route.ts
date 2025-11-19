@@ -56,7 +56,9 @@ ${prompt}
     });
 
     const text = extractText(completion);
-    console.log("PLAN RAW OUTPUT:", text);
+    console.log("🔍 FULL OPENAI RESPONSE:", JSON.stringify(completion, null, 2));
+console.log("📄 EXTRACTED TEXT:", text);
+
 
     if (!text || text.trim().length === 0) {
       return NextResponse.json(
