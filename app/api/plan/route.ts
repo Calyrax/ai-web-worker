@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
 const client = new OpenAI({
@@ -6,75 +6,83 @@ const client = new OpenAI({
 });
 
 /**
- * Extract output text from Responses API
+ * Safely extracts text output from the OpenAI Responses API.
+ * Works for ALL models: o3-mini, gpt-4.1, gpt-4.1-mini, etc.
  */
-function extractTextFromResponse(response: any): string {
+function extractText(response: any): string {
   try {
-    const block = response?.output?.[0];
-    if (!block) return "";
+    const item = response?.output?.[0];
+    if (!item) return "";
 
-    const contentArr = block?.content;
-    if (!Array.isArray(contentArr)) return "";
+    // New message-type output
+    if (item.type === "message" && Array.isArray(item.content)) {
+      return item.content
+        .map((c: any) => c?.text?.value ?? "")
+        .join("")
+        .trim();
+    }
 
-    const textParts = contentArr
-      .map((c: any) => c?.text?.value ?? "")
-      .filter(Boolean);
+    // Text output
+    if (item.type === "output_text") {
+      return item.text?.value ?? item.text ?? "";
+    }
 
-    return textParts.join("\n").trim();
+    // Fallback for raw strings
+    if (typeof item === "string") return item;
+
+    return "";
   } catch {
     return "";
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const { prompt } = await req.json();
 
     if (!prompt) {
-      return NextResponse.json(
-        { error: "Missing prompt" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
+    // Ask OpenAI to create a plan in pure JSON
     const completion = await client.responses.create({
-      model: process.env.OPENAI_MODEL ?? "gpt-4.1",
+      model: "o3-mini",
       input: `
-You are an autonomous web worker.
-Convert the user's request into a JSON plan.
+You are a planning assistant.
+Return ONLY a JSON array of steps. No explanation.
 
-(actions must match exactly)
-Allowed actions ONLY:
-  - {"action": "open_page", "url": "..."}
-  - {"action": "wait", "milliseconds": 1500}
-  - {"action": "extract_list", "selector": "CSS_SELECTOR", "limit": N}
-
-Do NOT use "goto" or "extract".
-Do NOT wrap in markdown or quotes.
-Return ONLY pure JSON.
+Each step must be in this format:
+- { "action": "open_page", "url": "https://..." }
+- { "action": "wait", "milliseconds": 1500 }
+- { "action": "extract_list", "selector": "CSS_SELECTOR", "limit": N }
 
 User request:
 ${prompt}
-      `,
+`
     });
 
-    const textOutput = extractTextFromResponse(completion);
+    // Extract raw text output
+    const textOutput = extractText(completion);
 
     let plan: any[] = [];
     try {
       plan = JSON.parse(textOutput);
     } catch (err) {
       return NextResponse.json(
-        { error: "Could not parse JSON", raw: textOutput },
+        {
+          error: "Could not parse JSON plan.",
+          raw: textOutput
+        },
         { status: 500 }
       );
     }
 
     return NextResponse.json({ plan });
-  } catch (error) {
-    console.error("Plan Error:", error);
+
+  } catch (error: any) {
+    console.error("PLAN ERROR:", error);
     return NextResponse.json(
-      { error: "Plan generation failed." },
+      { error: "Plan generation failed" },
       { status: 500 }
     );
   }
