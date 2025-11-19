@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
     const completion = await client.responses.create({
       model: "o3-mini",
       input: `
-Return ONLY a JSON array. Do not include text or commentary.
+Return ONLY a JSON array of steps.
+Each step MUST contain an "action" field.
 
 Allowed actions:
 - open_page
@@ -28,37 +29,24 @@ ${prompt}
 `
     });
 
-    // 🔍 LOG FULL RESPONSE
-    console.log("FULL OPENAI RESPONSE:", JSON.stringify(completion, null, 2));
+    // 🔥 THE ONLY FIELD YOU NEED
+    const text = completion.output_text;
 
-    // ⭐ NEW: Use `output_text` which is ALWAYS present
-    const raw = completion.output_text || "";
-    console.log("RAW OUTPUT TEXT:", raw);
+    // Log full raw text for debugging
+    console.log("RAW PLAN OUTPUT:", text);
 
-    if (!raw.trim()) {
-      return NextResponse.json(
-        { error: "Model returned empty output_text" },
-        { status: 500 }
-      );
-    }
-
-    let plan;
-
-    try {
-      plan = JSON.parse(raw);
-    } catch (err) {
-      console.error("JSON PARSE ERROR:", err);
-      return NextResponse.json(
-        { error: "Failed to parse plan JSON", raw },
-        { status: 500 }
-      );
-    }
+    // Parse safely
+    const plan = JSON.parse(text);
 
     return NextResponse.json({ plan });
 
   } catch (error: any) {
     console.error("PLAN ROUTE ERROR:", error);
-    return NextResponse.json({ error: "Plan generation failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Plan generation failed", details: error.message },
+      { status: 500 }
+    );
   }
 }
+
 
