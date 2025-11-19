@@ -1,46 +1,49 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-// Minimal parser that never triggers TS errors
-function extractText(out: any): string {
-  try {
-    if (!out) return "";
+// --- Extractor: works for ALL new Responses API formats ---
+function extractText(response: any): string {
+  const out = response?.output?.[0];
+  if (!out) return "";
 
-    // v1 format: output[0].content[0].text.value
-    if (out[0]?.content?.[0]?.text?.value) {
-      return out[0].content[0].text.value;
-    }
-
-    // Fallback: output_text structure
-    if (out[0]?.text?.value) {
-      return out[0].text.value;
-    }
-
-    // If string
-    if (typeof out === "string") return out;
-
-    return "";
-  } catch {
-    return "";
+  // New Responses API format
+  if (out.type === "output_text" && out.text) {
+    return out.text;
   }
+
+  // Fallback: old style message formats
+  if (out.type === "message" && Array.isArray(out.content)) {
+    return out.content
+      .map((c: any) => c.text?.value ?? "")
+      .join("\n")
+      .trim();
+  }
+
+  // If raw string
+  if (typeof out === "string") return out;
+
+  return "";
 }
 
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { prompt } = await request.json();
+    const { prompt } = await req.json();
 
     if (!prompt) {
-      return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing prompt" },
+        { status: 400 }
+      );
     }
 
     const completion = await client.responses.create({
       model: "o3-mini",
       input: `
-Return ONLY a JSON array. No text outside JSON.
+Return ONLY valid JSON array. No text outside JSON.
 
 Allowed actions:
 - open_page
@@ -52,18 +55,35 @@ ${prompt}
 `
     });
 
-    const raw = extractText(completion.output);
-    let plan = JSON.parse(raw);
+    const text = extractText(completion);
+    console.log("PLAN RAW OUTPUT:", text);
+
+    if (!text || text.trim().length === 0) {
+      return NextResponse.json(
+        { error: "Model returned empty output", raw: completion },
+        { status: 500 }
+      );
+    }
+
+    let plan;
+    try {
+      plan = JSON.parse(text);
+    } catch (err: any) {
+      console.error("JSON Parse Error:", err);
+      return NextResponse.json(
+        { error: "JSON parse failed", raw: text },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ plan });
-  } catch (err: any) {
-    console.error("PLAN ROUTE ERROR", err);
+
+  } catch (error: any) {
+    console.error("PLAN ROUTE ERROR:", error);
     return NextResponse.json(
       { error: "Plan generation failed" },
       { status: 500 }
     );
   }
 }
-
-
 
