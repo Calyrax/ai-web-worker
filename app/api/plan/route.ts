@@ -1,53 +1,46 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-// Universal extractor for Responses API
-function extractOutputText(completion: any): string {
-  const out = completion?.output?.[0];
+// Minimal parser that never triggers TS errors
+function extractText(out: any): string {
+  try {
+    if (!out) return "";
 
-  if (!out) return "";
+    // v1 format: output[0].content[0].text.value
+    if (out[0]?.content?.[0]?.text?.value) {
+      return out[0].content[0].text.value;
+    }
 
-  // Case 1: reasoning
-  if (out.type === "reasoning") {
-    return out.reasoning?.[0]?.text ?? "";
+    // Fallback: output_text structure
+    if (out[0]?.text?.value) {
+      return out[0].text.value;
+    }
+
+    // If string
+    if (typeof out === "string") return out;
+
+    return "";
+  } catch {
+    return "";
   }
-
-  // Case 2: model message with content array
-  if (out.type === "message" && Array.isArray(out.content)) {
-    return out.content
-      .map((c: any) => c?.text?.value || c?.text || "")
-      .join("\n")
-      .trim();
-  }
-
-  // Case 3: direct output_text
-  if (out.type === "output_text") {
-    return out.text?.value ?? out.text ?? "";
-  }
-
-  // Fallback
-  return JSON.stringify(out);
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const { prompt } = await req.json();
+    const { prompt } = await request.json();
 
     if (!prompt) {
-      return NextResponse.json(
-        { error: "Missing prompt" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
     const completion = await client.responses.create({
       model: "o3-mini",
       input: `
-Return ONLY a JSON array. Do not include anything else.
+Return ONLY a JSON array. No text outside JSON.
 
 Allowed actions:
 - open_page
@@ -56,32 +49,21 @@ Allowed actions:
 
 User request:
 ${prompt}
-      `
+`
     });
 
-    const text = extractOutputText(completion);
-
-    let plan;
-    try {
-      plan = JSON.parse(text);
-    } catch (err) {
-      return NextResponse.json(
-        { error: "Could not parse JSON", raw: text },
-        { status: 500 }
-      );
-    }
+    const raw = extractText(completion.output);
+    let plan = JSON.parse(raw);
 
     return NextResponse.json({ plan });
-
-  } catch (error) {
-    console.error("PLAN ERROR:", error);
+  } catch (err: any) {
+    console.error("PLAN ROUTE ERROR", err);
     return NextResponse.json(
       { error: "Plan generation failed" },
       { status: 500 }
     );
   }
 }
-
 
 
 
