@@ -4,46 +4,46 @@ export async function POST(req: Request) {
   try {
     const { plan } = await req.json();
 
-    if (!plan || !Array.isArray(plan)) {
+    if (!Array.isArray(plan)) {
       return NextResponse.json(
         { error: "Invalid or missing plan" },
         { status: 400 }
       );
     }
 
-    // Fix old action types (from GPT) to match the runner
-    const normalizedPlan = plan.map((step: any) => {
-      const fixed = { ...step };
+    // Normalize old GPT actions
+    const normalized = plan.map((step) => {
+      const s = { ...step };
 
-      if (fixed.action === "goto") fixed.action = "open_page";
-      if (fixed.action === "extract") fixed.action = "extract_list";
+      if (s.action === "goto") s.action = "open_page";
+      if (s.action === "extract") s.action = "extract_list";
 
-      return fixed;
+      return s;
     });
 
     const runnerUrl = process.env.RUNNER_URL;
     if (!runnerUrl) {
       return NextResponse.json(
-        { error: "Missing RUNNER_URL env variable" },
+        { error: "Missing RUNNER_URL" },
         { status: 500 }
       );
     }
 
-    const response = await fetch(`${runnerUrl}/run`, {
+    const res = await fetch(`${runnerUrl}/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan: normalizedPlan }),
+      body: JSON.stringify({ plan: normalized }),
     });
 
-    const data = await response.json();
-
+    const data = await res.json();
     return NextResponse.json(data);
-  } catch (error: any) {
-    console.error("Execute Error:", error);
+  } catch (err) {
+    console.error("Execute Error:", err);
     return NextResponse.json(
       { error: "Task execution failed" },
       { status: 500 }
     );
   }
 }
+
 
