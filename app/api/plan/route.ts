@@ -1,79 +1,82 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
-export async function POST(req: Request) {
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+});
+
+// Universal extractor for Responses API
+function extractOutputText(completion: any): string {
+  const out = completion?.output?.[0];
+
+  if (!out) return "";
+
+  // Case 1: reasoning
+  if (out.type === "reasoning") {
+    return out.reasoning?.[0]?.text ?? "";
+  }
+
+  // Case 2: model message with content array
+  if (out.type === "message" && Array.isArray(out.content)) {
+    return out.content
+      .map((c: any) => c?.text?.value || c?.text || "")
+      .join("\n")
+      .trim();
+  }
+
+  // Case 3: direct output_text
+  if (out.type === "output_text") {
+    return out.text?.value ?? out.text ?? "";
+  }
+
+  // Fallback
+  return JSON.stringify(out);
+}
+
+export async function POST(req: NextRequest) {
   try {
-    // Debug check env
-    if (!process.env.OPENAI_API_KEY) {
-      console.error("❌ OPENAI_API_KEY is missing");
-      return NextResponse.json(
-        { error: "Missing OPENAI_API_KEY" },
-        { status: 500 }
-      );
-    }
-
-    const client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY!,
-    });
-
     const { prompt } = await req.json();
 
     if (!prompt) {
-      console.error("❌ Missing prompt");
       return NextResponse.json(
         { error: "Missing prompt" },
         { status: 400 }
       );
     }
 
-    console.log("🟦 Calling OpenAI with:", prompt);
-
     const completion = await client.responses.create({
-      model: "gpt-4.1-mini",
+      model: "o3-mini",
       input: `
-Return ONLY a JSON array, no extra text.
-Allowed actions: open_page, wait, extract_list
-User request: ${prompt}
-`,
-      temperature: 0,
+Return ONLY a JSON array. Do not include anything else.
+
+Allowed actions:
+- open_page
+- wait
+- extract_list
+
+User request:
+${prompt}
+      `
     });
 
-    console.log("🟩 OpenAI Response received");
+    const text = extractOutputText(completion);
 
-    const out = completion?.output?.[0];
-    console.log("🔵 Raw first output:", out);
-
-    let text = "";
-
-    if (out?.type === "message" && Array.isArray(out.content)) {
-      text = out.content.map((c: any) => c.text?.value ?? "").join("\n");
-    } else if (out?.type === "output_text") {
-      text = out.text ?? out.text?.value ?? "";
-    } else if (typeof out === "string") {
-      text = out;
-    }
-
-    console.log("🟪 Extracted text:", text);
-
-    let plan = [];
+    let plan;
     try {
       plan = JSON.parse(text);
     } catch (err) {
-      console.error("❌ JSON Parse Error:", err, "RAW TEXT:", text);
       return NextResponse.json(
-        { error: "Invalid JSON from model", raw: text },
+        { error: "Could not parse JSON", raw: text },
         { status: 500 }
       );
     }
 
-    console.log("🟩 Final plan:", plan);
-
     return NextResponse.json({ plan });
 
-  } catch (err) {
-    console.error("❌ PLAN RUNTIME ERROR:", err);
+  } catch (error) {
+    console.error("PLAN ERROR:", error);
     return NextResponse.json(
-      { error: "Plan generation failed", details: String(err) },
+      { error: "Plan generation failed" },
       { status: 500 }
     );
   }
