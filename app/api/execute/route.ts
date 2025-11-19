@@ -1,92 +1,49 @@
 import { NextResponse } from "next/server";
 
-/**
- * POST /api/execute
- * Sends the plan to the Railway Runner backend.
- */
-
-const RUNNER_URL = process.env.RUNNER_URL; // Example: https://ai-web-worker-runner-production.up.railway.app
-
-if (!RUNNER_URL) {
-  console.warn("❗ WARNING: RUNNER_URL is NOT set in Vercel env vars.");
-}
-
 export async function POST(req: Request) {
   try {
     const { plan } = await req.json();
 
-    if (!Array.isArray(plan) || plan.length === 0) {
+    if (!plan || !Array.isArray(plan)) {
       return NextResponse.json(
-        { error: "Invalid or empty plan" },
+        { error: "Invalid or missing plan" },
         { status: 400 }
       );
     }
 
-    // -----------------------------------------
-    // 1. IMPROVE PLAN BEFORE SENDING TO RUNNER
-    //    Add scrolling + waitForSelector for extraction
-    // -----------------------------------------
+    // Fix old action types (from GPT) to match the runner
+    const normalizedPlan = plan.map((step: any) => {
+      const fixed = { ...step };
 
-    const enhancedPlan = [];
+      if (fixed.action === "goto") fixed.action = "open_page";
+      if (fixed.action === "extract") fixed.action = "extract_list";
 
-    for (const step of plan) {
-      enhancedPlan.push(step);
-
-      // Inject waitForSelector BEFORE extraction
-      if (step.action === "extract_list" && step.selector) {
-        enhancedPlan.push({
-          action: "wait_for_selector",
-          selector: step.selector,
-          timeout: 8000,
-        });
-
-        // Add scroll-to-bottom to load lazy content (Amazon, Zillow)
-        enhancedPlan.push({
-          action: "scroll_to_bottom",
-          times: 4,
-          delay: 600,
-        });
-
-        // Add small delay after scroll
-        enhancedPlan.push({
-          action: "wait",
-          milliseconds: 1200,
-        });
-      }
-    }
-
-    // -----------------------------------------
-    // 2. Send to runner backend
-    // -----------------------------------------
-
-    const runnerResponse = await fetch(`${RUNNER_URL}/run`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan: enhancedPlan }),
+      return fixed;
     });
 
-    let data;
-    try {
-      data = await runnerResponse.json();
-    } catch (err) {
+    const runnerUrl = process.env.RUNNER_URL;
+    if (!runnerUrl) {
       return NextResponse.json(
-        {
-          error: "Runner returned invalid JSON (HTML?)",
-          details: `Status ${runnerResponse.status}`,
-        },
+        { error: "Missing RUNNER_URL env variable" },
         { status: 500 }
       );
     }
 
-    // -----------------------------------------
-    // 3. Return data back to UI
-    // -----------------------------------------
+    const response = await fetch(`${runnerUrl}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: normalizedPlan }),
+    });
+
+    const data = await response.json();
 
     return NextResponse.json(data);
-  } catch (err: any) {
+  } catch (error: any) {
+    console.error("Execute Error:", error);
     return NextResponse.json(
-      { error: err.message || "Unknown error in execute route" },
+      { error: "Task execution failed" },
       { status: 500 }
     );
   }
 }
+
