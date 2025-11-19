@@ -5,45 +5,18 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-// --- Extractor: works for ALL new Responses API formats ---
-function extractText(response: any): string {
-  const out = response?.output?.[0];
-  if (!out) return "";
-
-  // New Responses API format
-  if (out.type === "output_text" && out.text) {
-    return out.text;
-  }
-
-  // Fallback: old style message formats
-  if (out.type === "message" && Array.isArray(out.content)) {
-    return out.content
-      .map((c: any) => c.text?.value ?? "")
-      .join("\n")
-      .trim();
-  }
-
-  // If raw string
-  if (typeof out === "string") return out;
-
-  return "";
-}
-
 export async function POST(req: NextRequest) {
   try {
     const { prompt } = await req.json();
 
     if (!prompt) {
-      return NextResponse.json(
-        { error: "Missing prompt" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
     const completion = await client.responses.create({
       model: "o3-mini",
       input: `
-Return ONLY valid JSON array. No text outside JSON.
+Return ONLY a JSON array. Do not include text or commentary.
 
 Allowed actions:
 - open_page
@@ -55,25 +28,28 @@ ${prompt}
 `
     });
 
-    const text = extractText(completion);
-    console.log("🔍 FULL OPENAI RESPONSE:", JSON.stringify(completion, null, 2));
-console.log("📄 EXTRACTED TEXT:", text);
+    // 🔍 LOG FULL RESPONSE
+    console.log("FULL OPENAI RESPONSE:", JSON.stringify(completion, null, 2));
 
+    // ⭐ NEW: Use `output_text` which is ALWAYS present
+    const raw = completion.output_text || "";
+    console.log("RAW OUTPUT TEXT:", raw);
 
-    if (!text || text.trim().length === 0) {
+    if (!raw.trim()) {
       return NextResponse.json(
-        { error: "Model returned empty output", raw: completion },
+        { error: "Model returned empty output_text" },
         { status: 500 }
       );
     }
 
     let plan;
+
     try {
-      plan = JSON.parse(text);
-    } catch (err: any) {
-      console.error("JSON Parse Error:", err);
+      plan = JSON.parse(raw);
+    } catch (err) {
+      console.error("JSON PARSE ERROR:", err);
       return NextResponse.json(
-        { error: "JSON parse failed", raw: text },
+        { error: "Failed to parse plan JSON", raw },
         { status: 500 }
       );
     }
@@ -82,10 +58,7 @@ console.log("📄 EXTRACTED TEXT:", text);
 
   } catch (error: any) {
     console.error("PLAN ROUTE ERROR:", error);
-    return NextResponse.json(
-      { error: "Plan generation failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Plan generation failed" }, { status: 500 });
   }
 }
 
